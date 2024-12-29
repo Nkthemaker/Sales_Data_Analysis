@@ -2,29 +2,58 @@ import yfinance as yf
 import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
-
+#Final
+# Function Definitions
 def fetch_historical_data(symbol, start_date, end_date):
     ticker = yf.Ticker(symbol)
     data = ticker.history(start=start_date, end=end_date)
     return data[['Open', 'Close', 'High', 'Low']]
 
+def process_monthly_prices_by_year(data):
+    data['Average Price'] = (data['Open'] + data['Close'] + data['High'] + data['Low']) / 4
+    data['Month'] = data.index.month
+    data['Year'] = data.index.year
+    return data.groupby(['Year', 'Month'])['Average Price'].mean().reset_index()
+
+
 def process_monthly_prices(data):
     data['Average Price'] = (data['Open'] + data['Close'] + data['High'] + data['Low']) / 4
-    monthly_avg = data['Average Price'].resample('M').mean()
-    return monthly_avg
+    return data['Average Price'].resample('ME').mean()
 
-def process_fluctuations(data):
-    data['Fluctuation'] = data['High'] - data['Low']
-    monthly_fluctuations = data['Fluctuation'].resample('M').mean()
-    return monthly_fluctuations
 
-# Define the Streamlit app
-def main():
-    st.title("Cryptocurrency Dashboard")
-    st.sidebar.header("Settings")
+def plot_monthly_comparisons(name, monthly_avg):
+    months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+              'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-    # Cryptocurrency list with symbols
-    crypto_list = {
+    plt.figure(figsize=(12, 6))
+    for year in monthly_avg['Year'].unique():
+        yearly_data = monthly_avg[monthly_avg['Year'] == year]
+        plt.plot(yearly_data['Month'], yearly_data['Average Price'], label=str(year))
+
+    plt.xticks(range(1, 13), months)
+    plt.title(f'Monthly Average Prices for {name} (Jan-Dec, Separated by Year)')
+    plt.xlabel('Month')
+    plt.ylabel('Average Price (USD)')
+    plt.legend(title='Year')
+    plt.grid(True)
+    st.pyplot(plt)
+
+
+def plot_monthly_prices(name, monthly_prices):
+    plt.figure(figsize=(12, 6))
+    monthly_prices.plot(label=name, marker='o')
+    plt.title(f'Monthly Average Prices for {name}')
+    plt.xlabel('Date')
+    plt.ylabel('Average Price (USD)')
+    plt.legend()
+    plt.grid(True)
+    st.pyplot(plt)
+
+
+# Streamlit UI
+st.title("Cryptocurrency Dashboard")
+
+crypto_list = {
         'Arbitrum': 'ARB-USD',
         'Artificial Superintelligence Alliance': 'FET-USD',
         'Ethena': 'ENA-USD',
@@ -35,32 +64,33 @@ def main():
         'Fantom': 'FTM-USD',
         'Cosmos': 'ATOM-USD',
         'Virtuals Protocol': 'VIRTUAL-USD'
-    }
+}
 
-    selected_crypto = st.sidebar.selectbox("Select Cryptocurrency", list(crypto_list.keys()))
-    start_date = st.sidebar.date_input("Start Date", pd.to_datetime("2021-01-01"))
-    end_date = st.sidebar.date_input("End Date", pd.to_datetime("2024-12-25"))
+start_date = st.date_input("Start Date", value=pd.to_datetime("2021-01-01"))
+end_date = st.date_input("End Date", value=pd.to_datetime("2024-12-25"))
 
-    if st.sidebar.button("Fetch Data"):
-        symbol = crypto_list[selected_crypto]
-        try:
-            st.write(f"Fetching data for {selected_crypto} ({symbol})...")
-            data = fetch_historical_data(symbol, start_date, end_date)
+# Selection of Cryptocurrency
+selected_crypto = st.selectbox("Select Cryptocurrency", list(crypto_list.keys()))
 
-            # Process data for average prices
-            monthly_avg = process_monthly_prices(data)
-            fluctuations = process_fluctuations(data)
+if selected_crypto:
+    symbol = crypto_list[selected_crypto]
+    st.subheader(f"Visualizations for {selected_crypto} ({symbol})")
 
-            # Plot average price
-            st.subheader(f"Monthly Average Prices - {selected_crypto}")
-            st.line_chart(monthly_avg)
+    try:
+        # Fetch and Process Data
+        data = fetch_historical_data(symbol, start_date, end_date)
+        data.index = pd.to_datetime(data.index)  # Ensure datetime index
+        monthly_avg = process_monthly_prices_by_year(data)
+        monthly_prices = process_monthly_prices(data)
 
-            # Plot fluctuations
-            st.subheader(f"Monthly Price Fluctuations - {selected_crypto}")
-            st.line_chart(fluctuations)
+        # Visualizations
+        st.header(f"{selected_crypto} Monthly Price Chart")
+        plot_monthly_prices(selected_crypto, monthly_prices)
 
-        except Exception as e:
-            st.error(f"Failed to fetch data for {selected_crypto}: {e}")
+        st.header(f"{selected_crypto} Year-Wise Monthly Comparison")
+        plot_monthly_comparisons(selected_crypto, monthly_avg)
 
-if __name__ == "__main__":
-    main()
+    except Exception as e:
+        st.error(f"Failed to fetch or process data for {selected_crypto}: {e}")
+
+
